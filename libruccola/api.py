@@ -56,7 +56,7 @@ class Channel(object):
             payload["count"] = count
         if unreads:
             payload["unreads"] = True
-        return self.session.post("/api/v1/channels.history", payload=payload)["messages"]
+        return self.session.get("/api/v1/channels.history", payload=payload)["messages"]
 
     def online(self):
         """
@@ -88,13 +88,15 @@ class Session(object):
         Returns decoded JSON response if successful.
         Raises APIError on failure.
         """
-        data = json.dumps(payload) if payload else None
+        from libruccola import dlog
+        dlog("GET({})->{}".format(call, json.dumps(payload) if payload else ""))
         response = requests.get(
             "https://{server}{call}".format(
                 server=self.config.server, 
                 call=call),
             headers=self._headers,
-            data=data)
+            params=payload)
+        dlog("GET({})<-{}".format(call, response.text))
         resj = json.loads(response.text)
         if resj.get("success") is True:
             return resj
@@ -109,13 +111,15 @@ class Session(object):
 
         Returns: See get()
         """
-        data = json.dumps(payload) if payload else None
+        from libruccola import dlog
+        dlog("POST({})->{}".format(call, json.dumps(payload) if payload else ""))
         response = requests.post(
             "https://{server}{call}".format(
                 server=self.config.server, 
                 call=call),
             headers=self._headers,
-            data=data)
+            data=payload)
+        dlog("POST({})<-{}".format(call, response.text))
         resj = json.loads(response.text)
         if resj.get("success") is True:
             return resj
