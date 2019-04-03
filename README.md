@@ -4,9 +4,19 @@
 
 ## Installation
 
-`ruccola` is written in Python (3).
+`ruccola` is written in Python (3.5+).
 
-TODO
+The requirements are listed in `requirements.txt`.
+
+Once all dependencies are installed and the
+configuration file has been created (see below),
+the client can be launched using:
+
+
+        python3 -m libruccola
+
+
+...or installed using `setup.py`.
 
 ## Usage
 
@@ -25,5 +35,5 @@ user_id = abc123...
 token = abc123...
 ```
 
-Now you should be able to start the client.
+With that you should be able to start the client.
 

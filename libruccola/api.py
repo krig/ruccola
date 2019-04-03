@@ -88,7 +88,7 @@ class Session(object):
         Returns decoded JSON response if successful.
         Raises APIError on failure.
         """
-        from libruccola import dlog
+        from .app import dlog
         dlog("GET({})->{}".format(call, json.dumps(payload) if payload else ""))
         response = requests.get(
             "https://{server}{call}".format(
@@ -111,7 +111,7 @@ class Session(object):
 
         Returns: See get()
         """
-        from libruccola import dlog
+        from .app import dlog
         dlog("POST({})->{}".format(call, json.dumps(payload) if payload else ""))
         response = requests.post(
             "https://{server}{call}".format(

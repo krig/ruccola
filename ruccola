@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-import libruccola
+from libruccola.__main__ import main
 
 if __name__ == "__main__":
-    libruccola.main()
+    main()
 
