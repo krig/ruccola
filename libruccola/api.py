@@ -4,6 +4,9 @@ Implements the Rocket.Chat REST API
 import requests
 import json
 import traceback
+import asyncio
+import websockets
+from collections import namedtuple
 
 
 class APIError(IOError):
@@ -22,7 +25,7 @@ class Channel(object):
     Describes a rocket.chat channel.
     """
     def __init__(self, session, res):
-        self._session = session
+        self.session = session
         self.id = res["_id"]
         self.name = res["name"]
 
@@ -36,7 +39,7 @@ class Channel(object):
                 "channel": "#{}".format(self.name),
                 "text": text
         }
-        return self._session.post("/api/v1/chat.postMessage", payload=payload)
+        return self.session.post("/api/v1/chat.postMessage", payload=payload)
 
     def history(self, latest=None, oldest=None, offset=0, count=20, unreads=False):
         """
@@ -53,25 +56,25 @@ class Channel(object):
             payload["count"] = count
         if unreads:
             payload["unreads"] = True
-        return self._session.post("/api/v1/channels.history", payload=payload)["messages"]
+        return self.session.post("/api/v1/channels.history", payload=payload)["messages"]
 
     def online(self):
         """
         Lists online users in channel.
         """
         payload = {"_id": self.id}
-        return self._session.get("/api/v1/channels.online", payload=payload)["online"]
+        return self.session.get("/api/v1/channels.online", payload=payload)["online"]
 
 
 class Session(object):
     def __init__(self, config):
-        self._cfg = config
+        self.config = config
         self._headers = self._buildHeaders()
 
     def _buildHeaders(self):
         return {
-                "X-Auth-Token": self._cfg.token,
-                "X-User-Id": self._cfg.user_id,
+                "X-Auth-Token": self.config.token,
+                "X-User-Id": self.config.user_id,
                 "Content-Type": "application/json"
         }
 
@@ -88,7 +91,7 @@ class Session(object):
         data = json.dumps(payload) if payload else None
         response = requests.get(
             "https://{server}{call}".format(
-                server=self._cfg.server, 
+                server=self.config.server, 
                 call=call),
             headers=self._headers,
             data=data)
@@ -109,7 +112,7 @@ class Session(object):
         data = json.dumps(payload) if payload else None
         response = requests.post(
             "https://{server}{call}".format(
-                server=self._cfg.server, 
+                server=self.config.server, 
                 call=call),
             headers=self._headers,
             data=data)
@@ -117,6 +120,15 @@ class Session(object):
         if resj.get("success") is True:
             return resj
         raise APIError(call=call, payload=payload, response=response)
+
+    def listChannels(self):
+        """
+        List all channels on server.
+        Returns [Channel]
+        Raises APIError on failure.
+        """
+        response = self.get("/api/v1/channels.list")
+        return [Channel(self, channel) for channel in response["channels"]]
 
     def listJoinedChannels(self):
         """
@@ -210,6 +222,88 @@ class Realtime(object):
     WebSocket API for rocket.chat.
     """
     def __init__(self, config):
-        self._cfg = config
+        self.config = config
         self._url = "wss://{server}/websocket".format(server=config.server)
+        self._sendqueue = []
+        self._recvqueue = []
+        self._idgen = 0
+        self._socket = None
+        import logging
+        self._logger = logging.getLogger('websockets')
+        self._logger.setLevel(logging.DEBUG)
+        self._logger.addHandler(logging.StreaHandler())
+
+    def _send(self, **msg):
+        data = json.dumps(msg)
+        self._sendqueue.append(data)
+
+    def _create_uid(self):
+        self._idgen += 1
+        return str(self._idgen)
+
+    def call(self, method, *params):
+        """
+        Call a method on the server
+        """
+        uid = self._create_uid()
+        self._send(msg="method", id=uid, method=method, params=list(params))
+        return uid
+
+    def subscribe(self, name, *params):
+        """
+        Subscribe to events
+        """
+        uid = self._create_uid()
+        self._send(msg="sub", id=uid, name=name, params=list(params))
+        return uid
+
+    def unsubscribe(self, uid):
+        """
+        Unsubscribe from events
+        """
+        self._send(msg="unsub", id=uid)
+        return uid
+
+    def connect(self):
+        """
+        Connect to websocket and send initial connect message
+        Returns the websocket mainloop coroutine
+        """
+        # push the connect message to the queue
+        self._send(msg="connect", version="1", support=["1"])
+        self._socket = websockets.connect(self._url, ssl=True)
+
+        async def consumer_handler():
+            while True:
+                message = await self._socket.recv()
+                self._recvqueue.append(message)
+
+        async def producer_handler():
+            while True:
+                while not self._sendqueue:
+                    asyncio.sleep(1)
+                message = self._sendqueue.pop(0)
+                await self._socket.send(message)
+        
+        async def mainloop():
+            consumer_task = asyncio.ensure_future(consumer_handler())
+            producer_task = asyncio.ensure_future(producer_handler())
+            done, pending = await asyncio.wait([consumer_task, producer_task],
+                    return_when=asyncio.FIRST_COMPLETED)
+            for task in pending:
+                task.cancel()
+        return mainloop
+
+    def _mkmessage(self, obj):
+        """
+        Convert JSON object into a Message object
+        """
+        return namedtuple("Message", obj.keys())(*obj.values())
+
+    def _mkroom(self, obj):
+        """
+        Convert JSON object into a Room object
+        """
+        return namedtuple("Room", obj.keys())(*obj.values())
+
 

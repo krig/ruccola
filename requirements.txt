@@ -1,4 +1,4 @@
-requests
-prompt_toolkit
-websockets
+requests >= 2.18
+prompt_toolkit >= 2
+websockets >= 3.4
 
