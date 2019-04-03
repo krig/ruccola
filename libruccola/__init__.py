@@ -8,6 +8,14 @@ COLORS = [
     'ansidarkgreen', 'ansibrown', 'ansidarkblue', 'ansipurple', 'ansiteal']
 
 
+class AppState(object):
+    def __init__(self, app, mainbuf, inbuf, chanbuf):
+        self.app = app
+        self.mainbuf = mainbuf
+        self.inbuf = inbuf
+        self.chanbuf = chanbuf
+        self.cached_channels = {}
+
 def build_layout(rchat):
     from prompt_toolkit.application import Application
     from prompt_toolkit.buffer import Buffer
@@ -60,14 +68,21 @@ def build_layout(rchat):
             key_bindings=kb,
             style=style,
             full_screen=True)
-    return app
+    appstate = AppState(app, mainbuf, inbuf, chanbuf)
+    return app, appstate
+
+def list_channels(rchat, appstate):
+    channels = rchat.listJoinedChannels()
+    for channel in channels:
+        appstate.cached_channels[channel.name] = channel
+    s = " ".join("#{}".format(channel.name) for channel in channels)
+    appstate.chanbuf.text = s
 
 def main():
     cfg = config.parse()
     rchat = api.Session(cfg)
-    app = build_layout(rchat)
+    app, appstate = build_layout(rchat)
     use_asyncio_event_loop()
-    asyncio.get_event_loop().run_until_complete(app.run_async().to_asyncio_future())
-    #print("Joined channels:\n")
-    #for channel in session.listJoinedChannels():
-    #print("#{}".format(channel.name))
+    loop = asyncio.get_event_loop()
+    loop.call_soon(list_channels, rchat, appstate)
+    loop.run_until_complete(app.run_async().to_asyncio_future())
