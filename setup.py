@@ -17,7 +17,7 @@ setup(
         author_email='kgronlund@suse.com',
         keywords='rocket.chat client',
         packages=['libruccola'],
-        python_requires='>=3.0',
+        python_requires='>=3.4',
         install_requires=['requests', 'prompt_toolkit', 'websockets'],
         entry_points={
             'console_scripts': [
